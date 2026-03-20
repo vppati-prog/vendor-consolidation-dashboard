@@ -1,4 +1,3 @@
-import re
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -6,7 +5,7 @@ import streamlit as st
 st.set_page_config(page_title="Vendor Consolidation Dashboard", layout="wide")
 
 # =========================================================
-# 1. BASE DATA - 10 VENDORS (LIKE-FOR-LIKE WITH EXCEL EXAMPLE)
+# 1. BASE DATA - 10 VENDORS
 # =========================================================
 
 BASE_VENDOR_METADATA = pd.DataFrame([
@@ -166,7 +165,6 @@ def extract_contract_signals(contract_text: str) -> dict:
         ),
     }
 
-# Build base contract text
 BASE_CONTRACTS = {
     vendor: generate_contract_text(vendor, scores["contract_flexibility"], scores["lock_in"])
     for vendor, scores in CONTRACT_SCORE_TARGETS.items()
@@ -184,12 +182,12 @@ TREATMENT_DIMENSIONS = [
     "value_potential",
 ]
 
-READINESS_DIMENSIONS = [
-    "operational_readiness",
-    "governance_fit",
-    "vendor_health",
-    "execution_readiness",  # this is inverse of execution_difficulty
-]
+READINESS_WEIGHTS = {
+    "operational_readiness": 35,
+    "governance_fit": 25,
+    "vendor_health": 20,
+    "execution_readiness": 20,
+}
 
 PREFERRED_BANDS = {
     "Transition": {
@@ -220,21 +218,6 @@ PREFERRED_BANDS = {
         "lock_in": (4, 5),
         "value_potential": (1, 2),
     },
-}
-
-DEFAULT_TREATMENT_WEIGHTS = {
-    "replaceability": 30,
-    "contract_flexibility": 20,
-    "execution_difficulty": 20,
-    "lock_in": 10,
-    "value_potential": 20,
-}
-
-READINESS_WEIGHTS = {
-    "operational_readiness": 35,
-    "governance_fit": 25,
-    "vendor_health": 20,
-    "execution_readiness": 20,
 }
 
 SCENARIOS = {
@@ -305,7 +288,7 @@ def build_weighted_scores(fit_df: pd.DataFrame, weights: dict) -> pd.DataFrame:
     for _, row in fit_df.iterrows():
         dim = row["dimension"]
         weight = weights[dim]
-        weighted_points = weight * row["fit_score"] / 5.0  # out of 100 once all weights sum to 100
+        weighted_points = weight * row["fit_score"] / 5.0
         rows.append({
             **row,
             "weight": round(weight, 2),
@@ -327,7 +310,6 @@ def build_treatment_summary(weighted_df: pd.DataFrame) -> pd.DataFrame:
     pivot["recommended_treatment"] = pivot[option_cols].idxmax(axis=1)
     pivot["top_score"] = pivot[option_cols].max(axis=1)
 
-    # confidence gap between top 2 options
     def score_gap(row):
         vals = sorted([row[c] for c in option_cols], reverse=True)
         return round(vals[0] - vals[1], 2)
@@ -338,12 +320,17 @@ def build_treatment_summary(weighted_df: pd.DataFrame) -> pd.DataFrame:
 def build_readiness_summary(actual_df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for _, row in actual_df.iterrows():
+        operational_contribution = READINESS_WEIGHTS["operational_readiness"] * row["operational_readiness"] / 5.0
+        governance_contribution = READINESS_WEIGHTS["governance_fit"] * row["governance_fit"] / 5.0
+        health_contribution = READINESS_WEIGHTS["vendor_health"] * row["vendor_health"] / 5.0
+        execution_contribution = READINESS_WEIGHTS["execution_readiness"] * row["execution_readiness"] / 5.0
+
         weighted_score = (
-            READINESS_WEIGHTS["operational_readiness"] * row["operational_readiness"] +
-            READINESS_WEIGHTS["governance_fit"] * row["governance_fit"] +
-            READINESS_WEIGHTS["vendor_health"] * row["vendor_health"] +
-            READINESS_WEIGHTS["execution_readiness"] * row["execution_readiness"]
-        ) / 5.0  # converts 1-5 weighted scale into 0-100
+            operational_contribution +
+            governance_contribution +
+            health_contribution +
+            execution_contribution
+        )
 
         if weighted_score >= 75:
             tranche = "Tranche 1"
@@ -354,9 +341,53 @@ def build_readiness_summary(actual_df: pd.DataFrame) -> pd.DataFrame:
 
         rows.append({
             "vendor": row["vendor"],
+            "operational_contribution": round(operational_contribution, 2),
+            "governance_contribution": round(governance_contribution, 2),
+            "health_contribution": round(health_contribution, 2),
+            "execution_contribution": round(execution_contribution, 2),
             "readiness_score": round(weighted_score, 2),
             "tranche": tranche,
         })
+    return pd.DataFrame(rows)
+
+def build_readiness_breakdown(actual_df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for _, row in actual_df.iterrows():
+        vendor = row["vendor"]
+        breakdown_map = {
+            "Operational Readiness": {
+                "actual_score": row["operational_readiness"],
+                "weight": READINESS_WEIGHTS["operational_readiness"],
+                "logic": "Uses the operational readiness score directly.",
+            },
+            "Governance Fit": {
+                "actual_score": row["governance_fit"],
+                "weight": READINESS_WEIGHTS["governance_fit"],
+                "logic": "Uses the governance fit score directly.",
+            },
+            "Vendor Health": {
+                "actual_score": row["vendor_health"],
+                "weight": READINESS_WEIGHTS["vendor_health"],
+                "logic": "Uses the vendor health score directly.",
+            },
+            "Execution Readiness": {
+                "actual_score": row["execution_readiness"],
+                "weight": READINESS_WEIGHTS["execution_readiness"],
+                "logic": "Calculated as 6 - execution difficulty.",
+            },
+        }
+
+        for dim_name, info in breakdown_map.items():
+            weighted_points = info["weight"] * info["actual_score"] / 5.0
+            rows.append({
+                "vendor": vendor,
+                "dimension": dim_name,
+                "actual_score": int(info["actual_score"]),
+                "weight": info["weight"],
+                "weighted_points": round(weighted_points, 2),
+                "logic": info["logic"],
+            })
+
     return pd.DataFrame(rows)
 
 def explain_vendor(vendor: str, weighted_df: pd.DataFrame, final_df: pd.DataFrame) -> str:
@@ -378,6 +409,24 @@ def explain_vendor(vendor: str, weighted_df: pd.DataFrame, final_df: pd.DataFram
         )
 
     return " ".join(reasons)
+
+def explain_readiness(vendor: str, readiness_breakdown_df: pd.DataFrame, readiness_summary_df: pd.DataFrame) -> str:
+    vendor_breakdown = readiness_breakdown_df[readiness_breakdown_df["vendor"] == vendor].sort_values(
+        "weighted_points", ascending=False
+    )
+    vendor_summary = readiness_summary_df[readiness_summary_df["vendor"] == vendor].iloc[0]
+
+    top2 = vendor_breakdown.head(2)
+    reasons = []
+    for _, r in top2.iterrows():
+        reasons.append(
+            f"{r['dimension']} scored {int(r['actual_score'])} and contributed {r['weighted_points']:.1f} points."
+        )
+
+    return (
+        f"Readiness score is {vendor_summary['readiness_score']:.1f}, resulting in {vendor_summary['tranche']}. "
+        + " ".join(reasons)
+    )
 
 # =========================================================
 # 4. SIDEBAR CONTROLS
@@ -445,10 +494,18 @@ actual_df = build_actual_scores(working_metadata, working_contracts)
 fit_df = build_fit_table(actual_df)
 weighted_df = build_weighted_scores(fit_df, treatment_weights)
 treatment_df = build_treatment_summary(weighted_df)
-readiness_df = build_readiness_summary(actual_df)
+readiness_summary_df = build_readiness_summary(actual_df)
+readiness_breakdown_df = build_readiness_breakdown(actual_df)
 
-final_df = treatment_df.merge(readiness_df, on="vendor", how="left")
+final_df = treatment_df.merge(
+    readiness_summary_df[["vendor", "readiness_score", "tranche"]],
+    on="vendor",
+    how="left"
+)
 final_df["explanation"] = final_df["vendor"].apply(lambda v: explain_vendor(v, weighted_df, final_df))
+final_df["readiness_explanation"] = final_df["vendor"].apply(
+    lambda v: explain_readiness(v, readiness_breakdown_df, readiness_summary_df)
+)
 
 # =========================================================
 # 7. UI
@@ -457,12 +514,13 @@ final_df["explanation"] = final_df["vendor"].apply(lambda v: explain_vendor(v, w
 st.title("Vendor Consolidation Dashboard")
 st.caption("Demo for 10 vendors: contract parsing + metadata scoring + treatment recommendation + readiness tranche")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "1. Vendor Intelligence Hub",
     "2. Fit Logic",
     "3. Weighted Scores",
-    "4. Decision Cockpit",
-    "5. Simulator View",
+    "4. Readiness Logic",
+    "5. Decision Cockpit",
+    "6. Simulator View",
 ])
 
 # -------------------------------
@@ -479,9 +537,7 @@ with tab1:
 
     with col1:
         st.markdown("#### Parsed Contract Signals")
-        signal_df = pd.DataFrame([
-            {"signal": k, "value": v} for k, v in contract_signals.items()
-        ])
+        signal_df = pd.DataFrame([{"signal": k, "value": v} for k, v in contract_signals.items()])
         st.dataframe(signal_df, use_container_width=True, hide_index=True)
 
         st.markdown("#### Actual Scores Used by the Model")
@@ -534,9 +590,68 @@ with tab3:
     )
 
 # -------------------------------
-# TAB 4 - Decision Cockpit
+# TAB 4 - Readiness Logic
 # -------------------------------
 with tab4:
+    st.subheader("Step 4: Readiness Logic")
+
+    vendor_pick_readiness = st.selectbox(
+        "Select vendor for readiness view",
+        actual_df["vendor"].tolist(),
+        key="readiness_vendor"
+    )
+
+    vendor_actual = actual_df[actual_df["vendor"] == vendor_pick_readiness].iloc[0]
+    vendor_breakdown = readiness_breakdown_df[
+        readiness_breakdown_df["vendor"] == vendor_pick_readiness
+    ].copy()
+    vendor_summary = readiness_summary_df[
+        readiness_summary_df["vendor"] == vendor_pick_readiness
+    ].iloc[0]
+
+    col1, col2 = st.columns([1.1, 1])
+
+    with col1:
+        st.markdown("#### Readiness Inputs")
+        readiness_inputs = pd.DataFrame([
+            {"dimension": "Operational Readiness", "score": int(vendor_actual["operational_readiness"])},
+            {"dimension": "Governance Fit", "score": int(vendor_actual["governance_fit"])},
+            {"dimension": "Vendor Health", "score": int(vendor_actual["vendor_health"])},
+            {"dimension": "Execution Difficulty", "score": int(vendor_actual["execution_difficulty"])},
+            {"dimension": "Execution Readiness = 6 - Difficulty", "score": int(vendor_actual["execution_readiness"])},
+        ])
+        st.dataframe(readiness_inputs, use_container_width=True, hide_index=True)
+
+        st.markdown("#### Readiness Breakdown")
+        st.dataframe(vendor_breakdown, use_container_width=True, hide_index=True)
+
+    with col2:
+        st.markdown("#### Readiness Summary")
+        summary_df = pd.DataFrame([
+            {"metric": "Operational Contribution", "value": vendor_summary["operational_contribution"]},
+            {"metric": "Governance Contribution", "value": vendor_summary["governance_contribution"]},
+            {"metric": "Health Contribution", "value": vendor_summary["health_contribution"]},
+            {"metric": "Execution Contribution", "value": vendor_summary["execution_contribution"]},
+            {"metric": "Readiness Score", "value": vendor_summary["readiness_score"]},
+            {"metric": "Tranche", "value": vendor_summary["tranche"]},
+        ])
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+        chart_df = vendor_breakdown[["dimension", "weighted_points"]].set_index("dimension")
+        st.markdown("#### Contribution Chart")
+        st.bar_chart(chart_df)
+
+    st.info(
+        "Layman logic: readiness is computed separately from treatment. "
+        "We take Operational Readiness, Governance Fit, Vendor Health, and Execution Readiness. "
+        "Execution Readiness is calculated as 6 - Execution Difficulty, because lower difficulty means higher readiness. "
+        "Each score is multiplied by its weight and divided by 5 to convert it into points out of 100."
+    )
+
+# -------------------------------
+# TAB 5 - Decision Cockpit
+# -------------------------------
+with tab5:
     st.subheader("Decision Cockpit")
 
     col1, col2 = st.columns([2, 1])
@@ -563,19 +678,24 @@ with tab4:
         st.markdown("**Tranche Count**")
         st.dataframe(tranche_counts, use_container_width=True, hide_index=True)
 
-    st.markdown("#### Explanation")
-    vendor_pick_explain = st.selectbox("Select vendor for explanation", final_df["vendor"].tolist(), key="explain_vendor")
+    st.markdown("#### Treatment Explanation")
+    vendor_pick_explain = st.selectbox("Select vendor for decision explanation", final_df["vendor"].tolist(), key="explain_vendor")
+
     explain_row = final_df[final_df["vendor"] == vendor_pick_explain].iloc[0]
 
     st.write(f"**Recommended treatment:** {explain_row['recommended_treatment']}")
-    st.write(f"**Readiness score:** {explain_row['readiness_score']}")
+    st.write(f"**Treatment score:** {explain_row['top_score']:.2f}")
+    st.write(f"**Why treatment:** {explain_row['explanation']}")
+
+    st.markdown("#### Readiness Explanation")
+    st.write(f"**Readiness score:** {explain_row['readiness_score']:.2f}")
     st.write(f"**Tranche:** {explain_row['tranche']}")
-    st.write(f"**Why:** {explain_row['explanation']}")
+    st.write(f"**Why readiness:** {explain_row['readiness_explanation']}")
 
 # -------------------------------
-# TAB 5 - Simulator
+# TAB 6 - Simulator
 # -------------------------------
-with tab5:
+with tab6:
     st.subheader("Live Simulator")
 
     sim_row = final_df[final_df["vendor"] == selected_vendor].iloc[0]
@@ -594,6 +714,7 @@ with tab5:
             {"dimension": "operational_readiness", "score": sim_actual["operational_readiness"]},
             {"dimension": "governance_fit", "score": sim_actual["governance_fit"]},
             {"dimension": "vendor_health", "score": sim_actual["vendor_health"]},
+            {"dimension": "execution_readiness", "score": sim_actual["execution_readiness"]},
         ])
         st.dataframe(sim_inputs, use_container_width=True, hide_index=True)
 
@@ -637,9 +758,13 @@ with st.expander("Model Notes"):
    - vendor_health
    - inverse of execution_difficulty
 
-**Readiness formula**
+**Treatment weighted points**
+- weighted points = weight x fit / 5
+
+**Readiness logic**
 - execution_readiness = 6 - execution_difficulty
-- readiness_score = weighted score out of 100
+- contribution = weight x actual score / 5
+- readiness score = sum of readiness contributions
 
 **Tranche thresholds**
 - 75+ = Tranche 1
