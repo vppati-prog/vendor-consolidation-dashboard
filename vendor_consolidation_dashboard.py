@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -9,16 +8,16 @@ st.set_page_config(page_title="Vendor Consolidation Dashboard", layout="wide")
 # =========================================================
 
 BASE_VENDOR_METADATA = pd.DataFrame([
-    {"vendor": "V1",  "replaceability": 5, "execution_difficulty": 2, "value_potential": 5, "operational_readiness": 4, "governance_fit": 4, "vendor_health": 4},
-    {"vendor": "V2",  "replaceability": 4, "execution_difficulty": 3, "value_potential": 4, "operational_readiness": 3, "governance_fit": 4, "vendor_health": 3},
-    {"vendor": "V3",  "replaceability": 3, "execution_difficulty": 3, "value_potential": 3, "operational_readiness": 3, "governance_fit": 5, "vendor_health": 4},
-    {"vendor": "V4",  "replaceability": 2, "execution_difficulty": 4, "value_potential": 3, "operational_readiness": 2, "governance_fit": 4, "vendor_health": 3},
-    {"vendor": "V5",  "replaceability": 1, "execution_difficulty": 5, "value_potential": 2, "operational_readiness": 1, "governance_fit": 2, "vendor_health": 3},
-    {"vendor": "V6",  "replaceability": 3, "execution_difficulty": 4, "value_potential": 4, "operational_readiness": 3, "governance_fit": 4, "vendor_health": 4},
-    {"vendor": "V7",  "replaceability": 2, "execution_difficulty": 4, "value_potential": 2, "operational_readiness": 2, "governance_fit": 4, "vendor_health": 3},
-    {"vendor": "V8",  "replaceability": 5, "execution_difficulty": 2, "value_potential": 4, "operational_readiness": 5, "governance_fit": 4, "vendor_health": 4},
-    {"vendor": "V9",  "replaceability": 1, "execution_difficulty": 5, "value_potential": 1, "operational_readiness": 1, "governance_fit": 2, "vendor_health": 2},
-    {"vendor": "V10", "replaceability": 3, "execution_difficulty": 3, "value_potential": 3, "operational_readiness": 3, "governance_fit": 3, "vendor_health": 3},
+    {"vendor": "V1",  "replaceability": 5, "execution_difficulty": 2, "value_potential": 5, "operational_readiness": 4, "governance_fit": 4, "vendor_health": 4, "annual_spend_m": 10.0, "business_criticality": 2},
+    {"vendor": "V2",  "replaceability": 4, "execution_difficulty": 3, "value_potential": 4, "operational_readiness": 3, "governance_fit": 4, "vendor_health": 3, "annual_spend_m": 8.0,  "business_criticality": 3},
+    {"vendor": "V3",  "replaceability": 3, "execution_difficulty": 3, "value_potential": 3, "operational_readiness": 3, "governance_fit": 5, "vendor_health": 4, "annual_spend_m": 6.5, "business_criticality": 4},
+    {"vendor": "V4",  "replaceability": 2, "execution_difficulty": 4, "value_potential": 3, "operational_readiness": 2, "governance_fit": 4, "vendor_health": 3, "annual_spend_m": 5.5, "business_criticality": 4},
+    {"vendor": "V5",  "replaceability": 1, "execution_difficulty": 5, "value_potential": 2, "operational_readiness": 1, "governance_fit": 2, "vendor_health": 3, "annual_spend_m": 4.0, "business_criticality": 5},
+    {"vendor": "V6",  "replaceability": 3, "execution_difficulty": 4, "value_potential": 4, "operational_readiness": 3, "governance_fit": 4, "vendor_health": 4, "annual_spend_m": 7.0, "business_criticality": 3},
+    {"vendor": "V7",  "replaceability": 2, "execution_difficulty": 4, "value_potential": 2, "operational_readiness": 2, "governance_fit": 4, "vendor_health": 3, "annual_spend_m": 3.5, "business_criticality": 4},
+    {"vendor": "V8",  "replaceability": 5, "execution_difficulty": 2, "value_potential": 4, "operational_readiness": 5, "governance_fit": 4, "vendor_health": 4, "annual_spend_m": 9.0, "business_criticality": 2},
+    {"vendor": "V9",  "replaceability": 1, "execution_difficulty": 5, "value_potential": 1, "operational_readiness": 1, "governance_fit": 2, "vendor_health": 2, "annual_spend_m": 2.5, "business_criticality": 5},
+    {"vendor": "V10", "replaceability": 3, "execution_difficulty": 3, "value_potential": 3, "operational_readiness": 3, "governance_fit": 3, "vendor_health": 3, "annual_spend_m": 5.0, "business_criticality": 3},
 ])
 
 CONTRACT_SCORE_TARGETS = {
@@ -104,7 +103,6 @@ def generate_contract_text(vendor_name: str, flex_score: int, lock_in_score: int
 
 def derive_contract_flexibility(contract_text: str) -> int:
     text = contract_text.lower()
-
     if "no termination for convenience" in text:
         return 1
     if "180 days" in text:
@@ -119,7 +117,6 @@ def derive_contract_flexibility(contract_text: str) -> int:
 
 def derive_lock_in(contract_text: str) -> int:
     text = contract_text.lower()
-
     if "exclusive ownership" in text and "proprietary vendor tools" in text:
         return 5
     if "retains core intellectual property" in text:
@@ -247,19 +244,18 @@ def build_actual_scores(metadata_df: pd.DataFrame, contracts_dict: dict) -> pd.D
     for _, row in metadata_df.iterrows():
         vendor = row["vendor"]
         contract_text = contracts_dict[vendor]
-        contract_flexibility = derive_contract_flexibility(contract_text)
-        lock_in = derive_lock_in(contract_text)
-
         records.append({
             "vendor": vendor,
             "replaceability": int(row["replaceability"]),
-            "contract_flexibility": int(contract_flexibility),
+            "contract_flexibility": int(derive_contract_flexibility(contract_text)),
             "execution_difficulty": int(row["execution_difficulty"]),
-            "lock_in": int(lock_in),
+            "lock_in": int(derive_lock_in(contract_text)),
             "value_potential": int(row["value_potential"]),
             "operational_readiness": int(row["operational_readiness"]),
             "governance_fit": int(row["governance_fit"]),
             "vendor_health": int(row["vendor_health"]),
+            "annual_spend_m": float(row["annual_spend_m"]),
+            "business_criticality": int(row["business_criticality"]),
             "execution_readiness": int(6 - row["execution_difficulty"]),
         })
     return pd.DataFrame(records)
@@ -303,9 +299,7 @@ def build_treatment_summary(weighted_df: pd.DataFrame) -> pd.DataFrame:
         .rename(columns={"weighted_points": "option_score"})
     )
 
-    pivot = summary.pivot(index="vendor", columns="option", values="option_score").reset_index()
-    pivot = pivot.fillna(0)
-
+    pivot = summary.pivot(index="vendor", columns="option", values="option_score").reset_index().fillna(0)
     option_cols = ["Transition", "Novate", "Managed", "Retain"]
     pivot["recommended_treatment"] = pivot[option_cols].idxmax(axis=1)
     pivot["top_score"] = pivot[option_cols].max(axis=1)
@@ -325,16 +319,11 @@ def build_readiness_summary(actual_df: pd.DataFrame) -> pd.DataFrame:
         health_contribution = READINESS_WEIGHTS["vendor_health"] * row["vendor_health"] / 5.0
         execution_contribution = READINESS_WEIGHTS["execution_readiness"] * row["execution_readiness"] / 5.0
 
-        weighted_score = (
-            operational_contribution +
-            governance_contribution +
-            health_contribution +
-            execution_contribution
-        )
+        readiness_score = operational_contribution + governance_contribution + health_contribution + execution_contribution
 
-        if weighted_score >= 75:
+        if readiness_score >= 75:
             tranche = "Tranche 1"
-        elif weighted_score >= 50:
+        elif readiness_score >= 50:
             tranche = "Tranche 2"
         else:
             tranche = "Tranche 3"
@@ -345,7 +334,7 @@ def build_readiness_summary(actual_df: pd.DataFrame) -> pd.DataFrame:
             "governance_contribution": round(governance_contribution, 2),
             "health_contribution": round(health_contribution, 2),
             "execution_contribution": round(execution_contribution, 2),
-            "readiness_score": round(weighted_score, 2),
+            "readiness_score": round(readiness_score, 2),
             "tranche": tranche,
         })
     return pd.DataFrame(rows)
@@ -355,28 +344,11 @@ def build_readiness_breakdown(actual_df: pd.DataFrame) -> pd.DataFrame:
     for _, row in actual_df.iterrows():
         vendor = row["vendor"]
         breakdown_map = {
-            "Operational Readiness": {
-                "actual_score": row["operational_readiness"],
-                "weight": READINESS_WEIGHTS["operational_readiness"],
-                "logic": "Uses the operational readiness score directly.",
-            },
-            "Governance Fit": {
-                "actual_score": row["governance_fit"],
-                "weight": READINESS_WEIGHTS["governance_fit"],
-                "logic": "Uses the governance fit score directly.",
-            },
-            "Vendor Health": {
-                "actual_score": row["vendor_health"],
-                "weight": READINESS_WEIGHTS["vendor_health"],
-                "logic": "Uses the vendor health score directly.",
-            },
-            "Execution Readiness": {
-                "actual_score": row["execution_readiness"],
-                "weight": READINESS_WEIGHTS["execution_readiness"],
-                "logic": "Calculated as 6 - execution difficulty.",
-            },
+            "Operational Readiness": {"actual_score": row["operational_readiness"], "weight": READINESS_WEIGHTS["operational_readiness"], "logic": "Uses the operational readiness score directly."},
+            "Governance Fit": {"actual_score": row["governance_fit"], "weight": READINESS_WEIGHTS["governance_fit"], "logic": "Uses the governance fit score directly."},
+            "Vendor Health": {"actual_score": row["vendor_health"], "weight": READINESS_WEIGHTS["vendor_health"], "logic": "Uses the vendor health score directly."},
+            "Execution Readiness": {"actual_score": row["execution_readiness"], "weight": READINESS_WEIGHTS["execution_readiness"], "logic": "Calculated as 6 - execution difficulty."},
         }
-
         for dim_name, info in breakdown_map.items():
             weighted_points = info["weight"] * info["actual_score"] / 5.0
             rows.append({
@@ -387,49 +359,197 @@ def build_readiness_breakdown(actual_df: pd.DataFrame) -> pd.DataFrame:
                 "weighted_points": round(weighted_points, 2),
                 "logic": info["logic"],
             })
-
     return pd.DataFrame(rows)
 
-def explain_vendor(vendor: str, weighted_df: pd.DataFrame, final_df: pd.DataFrame) -> str:
+# =========================================================
+# 4. VALUE SIMULATION LOGIC
+# =========================================================
+
+def clamp(value, low, high):
+    return max(low, min(high, value))
+
+def calculate_value_for_vendor(row, treatment):
+    spend = float(row["annual_spend_m"])
+    replaceability = int(row["replaceability"])
+    contract_flexibility = int(row["contract_flexibility"])
+    execution_difficulty = int(row["execution_difficulty"])
+    lock_in = int(row["lock_in"])
+    value_potential = int(row["value_potential"])
+    governance_fit = int(row["governance_fit"])
+    criticality = int(row["business_criticality"])
+
+    if treatment == "Transition":
+        base = 8.0
+        replaceability_uplift = 2.0 * (replaceability - 3)
+        value_uplift = 2.0 * (value_potential - 3)
+        difficulty_penalty = 1.5 * (execution_difficulty - 3)
+        lockin_penalty = 1.5 * (lock_in - 3)
+
+        gross_pct = clamp(base + replaceability_uplift + value_uplift - difficulty_penalty - lockin_penalty, 3.0, 20.0)
+        cost_pct = clamp(3.0 + 1.5 * execution_difficulty, 4.0, 12.0)
+
+        value_type = "Hard Savings"
+        gross_value = spend * gross_pct / 100.0
+        one_time_cost = spend * cost_pct / 100.0
+        net_value = gross_value - one_time_cost
+
+        logic_rows = [
+            ["Base Transition Savings %", base, "Baseline hard savings assumption for a replaceable vendor."],
+            ["Replaceability Uplift %", replaceability_uplift, "Higher replaceability increases savings potential."],
+            ["Value Potential Uplift %", value_uplift, "Higher value potential increases expected upside."],
+            ["Execution Difficulty Penalty %", -difficulty_penalty, "Higher execution difficulty reduces realizable savings."],
+            ["Lock-in Penalty %", -lockin_penalty, "Higher lock-in reduces savings potential."],
+            ["Final Gross Savings %", gross_pct, "Estimated annual gross savings percentage."],
+            ["One-Time Transition Cost %", cost_pct, "Estimated one-time cost to transition and stabilize service."],
+        ]
+
+    elif treatment == "Novate":
+        base = 4.0
+        contract_uplift = 1.5 * (contract_flexibility - 3)
+        governance_uplift = 1.0 * (governance_fit - 3)
+        lockin_penalty = 1.0 * (lock_in - 3)
+
+        gross_pct = clamp(base + contract_uplift + governance_uplift - lockin_penalty, 2.0, 10.0)
+        cost_pct = clamp(1.0 + 0.5 * execution_difficulty, 1.5, 4.0)
+
+        value_type = "Commercial / Governance Savings"
+        gross_value = spend * gross_pct / 100.0
+        one_time_cost = spend * cost_pct / 100.0
+        net_value = gross_value - one_time_cost
+
+        logic_rows = [
+            ["Base Novation Savings %", base, "Baseline commercial/governance gain assumption."],
+            ["Contract Flexibility Uplift %", contract_uplift, "More flexible contracts improve novation value."],
+            ["Governance Fit Uplift %", governance_uplift, "Better governance fit increases benefits under novation."],
+            ["Lock-in Penalty %", -lockin_penalty, "Higher lock-in limits negotiable savings."],
+            ["Final Gross Savings %", gross_pct, "Estimated annual gross savings percentage."],
+            ["One-Time Novation Cost %", cost_pct, "Estimated one-time cost to novate and set up governance."],
+        ]
+
+    elif treatment == "Managed":
+        base = 2.0
+        governance_uplift = 1.0 * (governance_fit - 3)
+        value_uplift = 0.5 * (value_potential - 3)
+
+        gross_pct = clamp(base + governance_uplift + value_uplift, 1.0, 6.0)
+        cost_pct = clamp(0.5 + 0.3 * execution_difficulty, 0.8, 2.5)
+
+        value_type = "Governance / Coordination Savings"
+        gross_value = spend * gross_pct / 100.0
+        one_time_cost = spend * cost_pct / 100.0
+        net_value = gross_value - one_time_cost
+
+        logic_rows = [
+            ["Base Managed Savings %", base, "Baseline savings from better coordination and oversight."],
+            ["Governance Fit Uplift %", governance_uplift, "Higher governance fit improves managed value."],
+            ["Value Potential Uplift %", value_uplift, "Some additional value can still be captured."],
+            ["Final Gross Savings %", gross_pct, "Estimated annual gross savings percentage."],
+            ["One-Time Managed Model Cost %", cost_pct, "Estimated setup cost for managed governance model."],
+        ]
+
+    else:
+        base = 1.0
+        criticality_uplift = 1.0 if criticality >= 4 else 0.0
+        difficulty_uplift = 1.0 if execution_difficulty >= 4 else 0.0
+        lockin_uplift = 1.0 if lock_in >= 4 else 0.0
+
+        gross_pct = clamp(base + criticality_uplift + difficulty_uplift + lockin_uplift, 1.0, 5.0)
+        cost_pct = 0.0
+
+        value_type = "Avoided Loss / Risk Avoidance"
+        gross_value = spend * gross_pct / 100.0
+        one_time_cost = 0.0
+        net_value = gross_value
+
+        logic_rows = [
+            ["Base Avoided Loss %", base, "Baseline avoided loss for not changing a structurally hard vendor."],
+            ["Criticality Uplift %", criticality_uplift, "Higher criticality increases avoided loss value."],
+            ["Execution Difficulty Uplift %", difficulty_uplift, "Very difficult vendors create higher avoided loss if retained."],
+            ["Lock-in Uplift %", lockin_uplift, "Higher lock-in raises disruption risk avoided through retention."],
+            ["Final Avoided Loss %", gross_pct, "Estimated avoided loss percentage."],
+            ["One-Time Cost %", cost_pct, "No one-time transformation cost assumed for retain."],
+        ]
+
+    payback_months = None
+    if one_time_cost > 0 and gross_value > 0:
+        payback_months = round((one_time_cost / gross_value) * 12, 1)
+
+    summary = {
+        "value_type": value_type,
+        "gross_value_m": round(gross_value, 2),
+        "one_time_cost_m": round(one_time_cost, 2),
+        "net_value_m": round(net_value, 2),
+        "gross_pct": round(gross_pct, 2),
+        "cost_pct": round(cost_pct, 2),
+        "payback_months": payback_months,
+    }
+
+    logic_df = pd.DataFrame(logic_rows, columns=["logic_component", "value_pct", "inference"])
+    return summary, logic_df
+
+def build_value_summary(actual_df, final_df):
+    rows = []
+    logic_map = {}
+
+    merged = actual_df.merge(
+        final_df[["vendor", "recommended_treatment", "tranche"]],
+        on="vendor",
+        how="left"
+    )
+
+    for _, row in merged.iterrows():
+        vendor = row["vendor"]
+        treatment = row["recommended_treatment"]
+        summary, logic_df = calculate_value_for_vendor(row, treatment)
+
+        logic_map[vendor] = logic_df
+        rows.append({
+            "vendor": vendor,
+            "recommended_treatment": treatment,
+            "tranche": row["tranche"],
+            "annual_spend_m": row["annual_spend_m"],
+            "value_type": summary["value_type"],
+            "gross_value_m": summary["gross_value_m"],
+            "one_time_cost_m": summary["one_time_cost_m"],
+            "net_value_m": summary["net_value_m"],
+            "gross_pct": summary["gross_pct"],
+            "cost_pct": summary["cost_pct"],
+            "payback_months": summary["payback_months"],
+        })
+
+    return pd.DataFrame(rows), logic_map
+
+# =========================================================
+# 5. EXPLANATIONS
+# =========================================================
+
+def explain_vendor(vendor, weighted_df, final_df):
     row = final_df[final_df["vendor"] == vendor].iloc[0]
     treatment = row["recommended_treatment"]
-
-    details = weighted_df[
-        (weighted_df["vendor"] == vendor) &
-        (weighted_df["option"] == treatment)
-    ].sort_values("weighted_points", ascending=False)
-
+    details = weighted_df[(weighted_df["vendor"] == vendor) & (weighted_df["option"] == treatment)].sort_values("weighted_points", ascending=False)
     top3 = details.head(3)[["dimension", "actual_score", "preferred_range", "weighted_points"]]
+
     reasons = []
     for _, r in top3.iterrows():
         reasons.append(
-            f"{r['dimension']} scored {int(r['actual_score'])}, "
-            f"which fits the preferred range {r['preferred_range']} for {treatment} "
+            f"{r['dimension']} scored {int(r['actual_score'])}, fits the preferred range {r['preferred_range']} for {treatment}, "
             f"and contributed {r['weighted_points']:.1f} points."
         )
-
     return " ".join(reasons)
 
-def explain_readiness(vendor: str, readiness_breakdown_df: pd.DataFrame, readiness_summary_df: pd.DataFrame) -> str:
-    vendor_breakdown = readiness_breakdown_df[readiness_breakdown_df["vendor"] == vendor].sort_values(
-        "weighted_points", ascending=False
-    )
+def explain_readiness(vendor, readiness_breakdown_df, readiness_summary_df):
+    vendor_breakdown = readiness_breakdown_df[readiness_breakdown_df["vendor"] == vendor].sort_values("weighted_points", ascending=False)
     vendor_summary = readiness_summary_df[readiness_summary_df["vendor"] == vendor].iloc[0]
-
     top2 = vendor_breakdown.head(2)
+
     reasons = []
     for _, r in top2.iterrows():
-        reasons.append(
-            f"{r['dimension']} scored {int(r['actual_score'])} and contributed {r['weighted_points']:.1f} points."
-        )
+        reasons.append(f"{r['dimension']} scored {int(r['actual_score'])} and contributed {r['weighted_points']:.1f} points.")
 
-    return (
-        f"Readiness score is {vendor_summary['readiness_score']:.1f}, resulting in {vendor_summary['tranche']}. "
-        + " ".join(reasons)
-    )
+    return f"Readiness score is {vendor_summary['readiness_score']:.1f}, resulting in {vendor_summary['tranche']}. " + " ".join(reasons)
 
 # =========================================================
-# 4. SIDEBAR CONTROLS
+# 6. SIDEBAR CONTROLS
 # =========================================================
 
 st.sidebar.title("Control Panel")
@@ -466,12 +586,14 @@ sim_value = st.sidebar.slider("Value Potential (sim)", 1, 5, int(selected_row["v
 sim_operational = st.sidebar.slider("Operational Readiness (sim)", 1, 5, int(selected_row["operational_readiness"]))
 sim_governance = st.sidebar.slider("Governance Fit (sim)", 1, 5, int(selected_row["governance_fit"]))
 sim_health = st.sidebar.slider("Vendor Health (sim)", 1, 5, int(selected_row["vendor_health"]))
+sim_spend = st.sidebar.slider("Annual Spend in $M (sim)", 1.0, 20.0, float(selected_row["annual_spend_m"]), 0.5)
+sim_criticality = st.sidebar.slider("Business Criticality (sim)", 1, 5, int(selected_row["business_criticality"]))
 
 sim_contract_flex = st.sidebar.slider("Contract Flexibility (via contract)", 1, 5, int(selected_contract_targets["contract_flexibility"]))
 sim_lock_in = st.sidebar.slider("Lock-in (via contract)", 1, 5, int(selected_contract_targets["lock_in"]))
 
 # =========================================================
-# 5. APPLY SIMULATION TO A WORKING COPY
+# 7. APPLY SIMULATION
 # =========================================================
 
 working_metadata = BASE_VENDOR_METADATA.copy()
@@ -483,11 +605,13 @@ working_metadata.loc[working_metadata["vendor"] == selected_vendor, "value_poten
 working_metadata.loc[working_metadata["vendor"] == selected_vendor, "operational_readiness"] = sim_operational
 working_metadata.loc[working_metadata["vendor"] == selected_vendor, "governance_fit"] = sim_governance
 working_metadata.loc[working_metadata["vendor"] == selected_vendor, "vendor_health"] = sim_health
+working_metadata.loc[working_metadata["vendor"] == selected_vendor, "annual_spend_m"] = sim_spend
+working_metadata.loc[working_metadata["vendor"] == selected_vendor, "business_criticality"] = sim_criticality
 
 working_contracts[selected_vendor] = generate_contract_text(selected_vendor, sim_contract_flex, sim_lock_in)
 
 # =========================================================
-# 6. CALCULATE MODEL OUTPUTS
+# 8. CALCULATE OUTPUTS
 # =========================================================
 
 actual_df = build_actual_scores(working_metadata, working_contracts)
@@ -502,33 +626,37 @@ final_df = treatment_df.merge(
     on="vendor",
     how="left"
 )
-final_df["explanation"] = final_df["vendor"].apply(lambda v: explain_vendor(v, weighted_df, final_df))
-final_df["readiness_explanation"] = final_df["vendor"].apply(
-    lambda v: explain_readiness(v, readiness_breakdown_df, readiness_summary_df)
+
+value_summary_df, value_logic_map = build_value_summary(actual_df, final_df)
+
+final_df = final_df.merge(
+    value_summary_df.drop(columns=["recommended_treatment", "tranche"]),
+    on="vendor",
+    how="left"
 )
 
+final_df["explanation"] = final_df["vendor"].apply(lambda v: explain_vendor(v, weighted_df, final_df))
+final_df["readiness_explanation"] = final_df["vendor"].apply(lambda v: explain_readiness(v, readiness_breakdown_df, readiness_summary_df))
+
 # =========================================================
-# 7. UI
+# 9. UI
 # =========================================================
 
 st.title("Vendor Consolidation Dashboard")
-st.caption("Demo for 10 vendors: contract parsing + metadata scoring + treatment recommendation + readiness tranche")
+st.caption("Demo for 10 vendors: contract parsing + metadata scoring + treatment recommendation + readiness tranche + value simulation")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "1. Vendor Intelligence Hub",
     "2. Fit Logic",
     "3. Weighted Scores",
     "4. Readiness Logic",
-    "5. Decision Cockpit",
-    "6. Simulator View",
+    "5. Value Simulation",
+    "6. Decision Cockpit",
+    "7. Simulator View",
 ])
 
-# -------------------------------
-# TAB 1 - Vendor Intelligence Hub
-# -------------------------------
 with tab1:
     st.subheader("Vendor Intelligence Hub")
-
     vendor_pick = st.selectbox("Select vendor", actual_df["vendor"].tolist(), key="vih_vendor")
     contract_text = working_contracts[vendor_pick]
     contract_signals = extract_contract_signals(contract_text)
@@ -549,27 +677,15 @@ with tab1:
         st.markdown("#### Mock Contract Text")
         st.text_area("Contract", value=contract_text, height=380, key="contract_text_view")
 
-# -------------------------------
-# TAB 2 - Fit Logic
-# -------------------------------
 with tab2:
     st.subheader("Step 2: Actual Score vs Preferred Range -> Fit Score")
-
     vendor_pick_fit = st.selectbox("Select vendor for fit view", actual_df["vendor"].tolist(), key="fit_vendor")
     vendor_fit = fit_df[fit_df["vendor"] == vendor_pick_fit].copy()
     st.dataframe(vendor_fit, use_container_width=True, hide_index=True)
+    st.info("For each dimension, the model checks how well the vendor's actual score matches what each option prefers. Match = Fit 5, close = Fit 3, far = Fit 1.")
 
-    st.info(
-        "Layman logic: for each dimension, the model checks how well the vendor's actual score matches "
-        "what each option prefers. Match = Fit 5, close = Fit 3, far = Fit 1."
-    )
-
-# -------------------------------
-# TAB 3 - Weighted Scores
-# -------------------------------
 with tab3:
     st.subheader("Step 3: Fit Score x Weight -> Weighted Points")
-
     vendor_pick_weight = st.selectbox("Select vendor for weighted view", actual_df["vendor"].tolist(), key="weight_vendor")
     vendor_weight = weighted_df[weighted_df["vendor"] == vendor_pick_weight].copy()
     st.dataframe(vendor_weight, use_container_width=True, hide_index=True)
@@ -582,32 +698,14 @@ with tab3:
     st.markdown("#### Treatment Score Summary")
     st.dataframe(option_summary, use_container_width=True, hide_index=True)
     st.bar_chart(option_summary.set_index("option"))
+    st.info("Weighted points = weight x fit / 5. The fit tells us suitability; the weight tells us importance.")
 
-    st.info(
-        "Layman logic: the fit tells us how suitable a dimension is for an option. "
-        "The weight tells us how important that dimension is overall. "
-        "Weighted points = weight x fit / 5."
-    )
-
-# -------------------------------
-# TAB 4 - Readiness Logic
-# -------------------------------
 with tab4:
     st.subheader("Step 4: Readiness Logic")
-
-    vendor_pick_readiness = st.selectbox(
-        "Select vendor for readiness view",
-        actual_df["vendor"].tolist(),
-        key="readiness_vendor"
-    )
-
+    vendor_pick_readiness = st.selectbox("Select vendor for readiness view", actual_df["vendor"].tolist(), key="readiness_vendor")
     vendor_actual = actual_df[actual_df["vendor"] == vendor_pick_readiness].iloc[0]
-    vendor_breakdown = readiness_breakdown_df[
-        readiness_breakdown_df["vendor"] == vendor_pick_readiness
-    ].copy()
-    vendor_summary = readiness_summary_df[
-        readiness_summary_df["vendor"] == vendor_pick_readiness
-    ].iloc[0]
+    vendor_breakdown = readiness_breakdown_df[readiness_breakdown_df["vendor"] == vendor_pick_readiness].copy()
+    vendor_summary = readiness_summary_df[readiness_summary_df["vendor"] == vendor_pick_readiness].iloc[0]
 
     col1, col2 = st.columns([1.1, 1])
 
@@ -636,22 +734,139 @@ with tab4:
             {"metric": "Tranche", "value": vendor_summary["tranche"]},
         ])
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
-
-        chart_df = vendor_breakdown[["dimension", "weighted_points"]].set_index("dimension")
         st.markdown("#### Contribution Chart")
+        st.bar_chart(vendor_breakdown[["dimension", "weighted_points"]].set_index("dimension"))
+
+    st.info("Readiness is computed separately from treatment. Each readiness dimension contributes points out of 100. Execution Readiness is calculated as 6 - Execution Difficulty.")
+
+with tab5:
+    st.subheader("Step 5: Value Simulation")
+    vendor_pick_value = st.selectbox("Select vendor for value view", actual_df["vendor"].tolist(), key="value_vendor")
+
+    vendor_actual = actual_df[actual_df["vendor"] == vendor_pick_value].iloc[0]
+    vendor_final = final_df[final_df["vendor"] == vendor_pick_value].iloc[0]
+    vendor_logic = value_logic_map[vendor_pick_value].copy()
+
+    col1, col2 = st.columns([1.15, 1])
+
+    with col1:
+        st.markdown("#### Vendor-Level Inputs and Assumptions")
+        value_inputs = pd.DataFrame([
+            {"dimension": "Recommended Treatment", "value": vendor_final["recommended_treatment"], "inference": "This treatment determines which value logic is applied."},
+            {"dimension": "Annual Spend ($M)", "value": vendor_actual["annual_spend_m"], "inference": "Higher spend creates a larger value base."},
+            {"dimension": "Replaceability", "value": vendor_actual["replaceability"], "inference": "Higher replaceability typically improves Transition economics."},
+            {"dimension": "Contract Flexibility", "value": vendor_actual["contract_flexibility"], "inference": "Higher flexibility improves Novate and Transition value."},
+            {"dimension": "Execution Difficulty", "value": vendor_actual["execution_difficulty"], "inference": "Higher difficulty increases one-time cost and reduces savings."},
+            {"dimension": "Lock-in", "value": vendor_actual["lock_in"], "inference": "Higher lock-in reduces savings and increases avoided-loss value under Retain."},
+            {"dimension": "Value Potential", "value": vendor_actual["value_potential"], "inference": "Higher value potential lifts expected upside."},
+            {"dimension": "Governance Fit", "value": vendor_actual["governance_fit"], "inference": "Higher governance fit improves Novate and Managed value."},
+            {"dimension": "Business Criticality", "value": vendor_actual["business_criticality"], "inference": "Higher criticality increases avoided-loss logic for Retain."},
+        ])
+        st.dataframe(value_inputs, use_container_width=True, hide_index=True)
+
+        st.markdown("#### Vendor-Level Logic Breakdown (%)")
+        st.dataframe(vendor_logic, use_container_width=True, hide_index=True)
+
+    with col2:
+        st.markdown("#### Vendor-Level Value Summary")
+        value_summary = pd.DataFrame([
+            {"metric": "Value Type", "value": vendor_final["value_type"]},
+            {"metric": "Gross Value ($M)", "value": vendor_final["gross_value_m"]},
+            {"metric": "One-Time Cost ($M)", "value": vendor_final["one_time_cost_m"]},
+            {"metric": "Net Value ($M)", "value": vendor_final["net_value_m"]},
+            {"metric": "Gross Value %", "value": vendor_final["gross_pct"]},
+            {"metric": "One-Time Cost %", "value": vendor_final["cost_pct"]},
+            {"metric": "Payback (months)", "value": vendor_final["payback_months"] if pd.notnull(vendor_final["payback_months"]) else "N/A"},
+        ])
+        st.dataframe(value_summary, use_container_width=True, hide_index=True)
+
+        chart_df = pd.DataFrame([
+            {"metric": "Gross Value", "amount_m": vendor_final["gross_value_m"]},
+            {"metric": "One-Time Cost", "amount_m": vendor_final["one_time_cost_m"]},
+            {"metric": "Net Value", "amount_m": vendor_final["net_value_m"]},
+        ]).set_index("metric")
+        st.markdown("#### Vendor-Level Value Chart ($M)")
         st.bar_chart(chart_df)
 
+    st.markdown("---")
+    st.markdown("### Portfolio-Level Potential Value")
+
+    portfolio_total_gross = round(final_df["gross_value_m"].sum(), 2)
+    portfolio_total_cost = round(final_df["one_time_cost_m"].sum(), 2)
+    portfolio_total_net = round(final_df["net_value_m"].sum(), 2)
+
+    tranche_12_df = final_df[final_df["tranche"].isin(["Tranche 1", "Tranche 2"])].copy()
+    tranche_12_gross = round(tranche_12_df["gross_value_m"].sum(), 2)
+    tranche_12_cost = round(tranche_12_df["one_time_cost_m"].sum(), 2)
+    tranche_12_net = round(tranche_12_df["net_value_m"].sum(), 2)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Portfolio Gross Value ($M)", portfolio_total_gross)
+    with c2:
+        st.metric("Portfolio One-Time Cost ($M)", portfolio_total_cost)
+    with c3:
+        st.metric("Portfolio Net Value ($M)", portfolio_total_net)
+
+    c4, c5, c6 = st.columns(3)
+    with c4:
+        st.metric("Tranche 1 + 2 Gross Value ($M)", tranche_12_gross)
+    with c5:
+        st.metric("Tranche 1 + 2 One-Time Cost ($M)", tranche_12_cost)
+    with c6:
+        st.metric("Tranche 1 + 2 Net Value ($M)", tranche_12_net)
+
     st.info(
-        "Layman logic: readiness is computed separately from treatment. "
-        "We take Operational Readiness, Governance Fit, Vendor Health, and Execution Readiness. "
-        "Execution Readiness is calculated as 6 - Execution Difficulty, because lower difficulty means higher readiness. "
-        "Each score is multiplied by its weight and divided by 5 to convert it into points out of 100."
+        "Interpretation: Tranche 1 and Tranche 2 vendors represent the more execution-ready portfolio. "
+        "This gives an approximate view of what the top 50–60% of actionable vendors could unlock earlier in the program."
     )
 
-# -------------------------------
-# TAB 5 - Decision Cockpit
-# -------------------------------
-with tab5:
+    colp1, colp2 = st.columns([1, 1])
+
+    with colp1:
+        st.markdown("#### Treatment-Wise Value Split")
+        treatment_value_split = final_df.groupby("recommended_treatment", as_index=False)[["gross_value_m", "one_time_cost_m", "net_value_m"]].sum()
+        st.dataframe(treatment_value_split, use_container_width=True, hide_index=True)
+        st.bar_chart(treatment_value_split.set_index("recommended_treatment")[["net_value_m"]])
+
+    with colp2:
+        st.markdown("#### Tranche-Wise Value Split")
+        tranche_value_split = final_df.groupby("tranche", as_index=False)[["gross_value_m", "one_time_cost_m", "net_value_m"]].sum()
+        st.dataframe(tranche_value_split, use_container_width=True, hide_index=True)
+        st.bar_chart(tranche_value_split.set_index("tranche")[["net_value_m"]])
+
+    st.markdown("#### Top Vendors by Net Value")
+    top_value_vendors = final_df[[
+        "vendor", "recommended_treatment", "tranche", "gross_value_m", "one_time_cost_m", "net_value_m"
+    ]].sort_values("net_value_m", ascending=False)
+    st.dataframe(top_value_vendors, use_container_width=True, hide_index=True)
+
+    st.markdown("#### Portfolio-Level Inferences")
+    inference_rows = [
+        {
+            "inference": "Portfolio Gross Value",
+            "commentary": "This is the total potential annualized value or avoided loss across all 10 vendors based on the current recommended treatment mix."
+        },
+        {
+            "inference": "Portfolio One-Time Cost",
+            "commentary": "This reflects the estimated implementation or setup cost needed to realize the treatment-led value."
+        },
+        {
+            "inference": "Portfolio Net Value",
+            "commentary": "This is the estimated value remaining after one-time costs."
+        },
+        {
+            "inference": "Tranche 1 + 2 Value",
+            "commentary": "This isolates the more execution-ready vendors and shows the earlier value pool that may be captured first."
+        },
+        {
+            "inference": "Treatment-Wise Split",
+            "commentary": "This helps explain which treatment type is contributing the most value in the current portfolio."
+        },
+    ]
+    st.dataframe(pd.DataFrame(inference_rows), use_container_width=True, hide_index=True)
+
+with tab6:
     st.subheader("Decision Cockpit")
 
     col1, col2 = st.columns([2, 1])
@@ -660,10 +875,10 @@ with tab5:
         display_df = final_df[[
             "vendor", "Transition", "Novate", "Managed", "Retain",
             "recommended_treatment", "top_score", "score_gap_vs_next_best",
-            "readiness_score", "tranche"
+            "readiness_score", "tranche", "gross_value_m", "one_time_cost_m", "net_value_m"
         ]].copy()
 
-        for col in ["Transition", "Novate", "Managed", "Retain", "top_score", "score_gap_vs_next_best", "readiness_score"]:
+        for col in ["Transition", "Novate", "Managed", "Retain", "top_score", "score_gap_vs_next_best", "readiness_score", "gross_value_m", "one_time_cost_m", "net_value_m"]:
             display_df[col] = display_df[col].round(2)
 
         st.dataframe(display_df, use_container_width=True, hide_index=True)
@@ -673,14 +888,23 @@ with tab5:
         treatment_counts = final_df["recommended_treatment"].value_counts().rename_axis("treatment").reset_index(name="count")
         tranche_counts = final_df["tranche"].value_counts().rename_axis("tranche").reset_index(name="count")
 
+        total_gross = round(final_df["gross_value_m"].sum(), 2)
+        total_cost = round(final_df["one_time_cost_m"].sum(), 2)
+        total_net = round(final_df["net_value_m"].sum(), 2)
+
         st.markdown("**Treatment Count**")
         st.dataframe(treatment_counts, use_container_width=True, hide_index=True)
         st.markdown("**Tranche Count**")
         st.dataframe(tranche_counts, use_container_width=True, hide_index=True)
+        st.markdown("**Portfolio Value ($M)**")
+        st.dataframe(pd.DataFrame([
+            {"metric": "Total Gross Value", "value": total_gross},
+            {"metric": "Total One-Time Cost", "value": total_cost},
+            {"metric": "Total Net Value", "value": total_net},
+        ]), use_container_width=True, hide_index=True)
 
     st.markdown("#### Treatment Explanation")
     vendor_pick_explain = st.selectbox("Select vendor for decision explanation", final_df["vendor"].tolist(), key="explain_vendor")
-
     explain_row = final_df[final_df["vendor"] == vendor_pick_explain].iloc[0]
 
     st.write(f"**Recommended treatment:** {explain_row['recommended_treatment']}")
@@ -692,10 +916,14 @@ with tab5:
     st.write(f"**Tranche:** {explain_row['tranche']}")
     st.write(f"**Why readiness:** {explain_row['readiness_explanation']}")
 
-# -------------------------------
-# TAB 6 - Simulator
-# -------------------------------
-with tab6:
+    st.markdown("#### Value Explanation")
+    st.write(
+        f"**Estimated value:** {explain_row['net_value_m']:.2f}M net "
+        f"from {explain_row['gross_value_m']:.2f}M gross value and {explain_row['one_time_cost_m']:.2f}M one-time cost."
+    )
+    st.caption("Note: the treatment decision still uses qualitative Value Potential as a treatment dimension. The quantified value shown here is a separate estimator for explainability and prioritization, not a circular input into the decision engine.")
+
+with tab7:
     st.subheader("Live Simulator")
 
     sim_row = final_df[final_df["vendor"] == selected_vendor].iloc[0]
@@ -715,6 +943,8 @@ with tab6:
             {"dimension": "governance_fit", "score": sim_actual["governance_fit"]},
             {"dimension": "vendor_health", "score": sim_actual["vendor_health"]},
             {"dimension": "execution_readiness", "score": sim_actual["execution_readiness"]},
+            {"dimension": "annual_spend_m", "score": sim_actual["annual_spend_m"]},
+            {"dimension": "business_criticality", "score": sim_actual["business_criticality"]},
         ])
         st.dataframe(sim_inputs, use_container_width=True, hide_index=True)
 
@@ -728,46 +958,74 @@ with tab6:
             {"metric": "Retain Score", "value": round(sim_row["Retain"], 2)},
             {"metric": "Readiness Score", "value": round(sim_row["readiness_score"], 2)},
             {"metric": "Tranche", "value": sim_row["tranche"]},
+            {"metric": "Gross Value ($M)", "value": round(sim_row["gross_value_m"], 2)},
+            {"metric": "One-Time Cost ($M)", "value": round(sim_row["one_time_cost_m"], 2)},
+            {"metric": "Net Value ($M)", "value": round(sim_row["net_value_m"], 2)},
+            {"metric": "Value Type", "value": sim_row["value_type"]},
         ])
         st.dataframe(sim_result, use_container_width=True, hide_index=True)
 
-    st.success(
-        f"Live demo: you are currently simulating vendor {selected_vendor}. "
-        "Every slider move in the sidebar recalculates the contract, actual scores, fit scores, "
-        "weighted scores, treatment recommendation, readiness score, and tranche."
-    )
+    st.markdown("#### Portfolio Summary for All Simulated Vendors")
+    sim_portfolio_df = final_df[[
+        "vendor", "recommended_treatment", "readiness_score", "tranche",
+        "gross_value_m", "one_time_cost_m", "net_value_m"
+    ]].copy().sort_values(["tranche", "net_value_m"], ascending=[True, False])
 
-# =========================================================
-# 8. FOOTER / MODEL NOTES
-# =========================================================
+    st.dataframe(sim_portfolio_df, use_container_width=True, hide_index=True)
+
+    total_sim_gross = round(sim_portfolio_df["gross_value_m"].sum(), 2)
+    total_sim_cost = round(sim_portfolio_df["one_time_cost_m"].sum(), 2)
+    total_sim_net = round(sim_portfolio_df["net_value_m"].sum(), 2)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Simulated Portfolio Gross Value ($M)", total_sim_gross)
+    with c2:
+        st.metric("Simulated Portfolio One-Time Cost ($M)", total_sim_cost)
+    with c3:
+        st.metric("Simulated Portfolio Net Value ($M)", total_sim_net)
+
+    st.success(
+        f"You are simulating vendor {selected_vendor}. Every sidebar change recalculates the contract, actual scores, "
+        f"fit scores, weighted treatment scores, readiness score, tranche, and estimated value across the entire portfolio."
+    )
 
 with st.expander("Model Notes"):
     st.markdown("""
 **How this demo works**
 1. Mock contracts are generated for each vendor.
-2. The contract parser derives two contract-based dimensions:
+2. The contract parser derives:
    - contract_flexibility
    - lock_in
 3. Remaining dimensions come from synthetic metadata.
-4. For each treatment option, the model checks how well the actual score fits the preferred range.
-5. Fit scores are converted into weighted points.
-6. Highest treatment score wins.
-7. Readiness uses:
+4. Treatment is based on:
+   - fit score vs preferred range
+   - weighted treatment points
+5. Readiness is based on:
    - operational_readiness
    - governance_fit
    - vendor_health
-   - inverse of execution_difficulty
+   - execution_readiness = 6 - execution_difficulty
+6. Value is treatment-specific:
+   - Transition -> hard savings
+   - Novate -> commercial/governance savings
+   - Managed -> coordination/governance savings
+   - Retain -> avoided loss
 
-**Treatment weighted points**
+**Treatment formula**
 - weighted points = weight x fit / 5
 
-**Readiness logic**
-- execution_readiness = 6 - execution_difficulty
-- contribution = weight x actual score / 5
+**Readiness formula**
+- contribution = weight x score / 5
 - readiness score = sum of readiness contributions
 
-**Tranche thresholds**
-- 75+ = Tranche 1
-- 50 to 74.99 = Tranche 2
-- Below 50 = Tranche 3
+**Value outputs**
+- Gross value
+- One-time cost
+- Net value
+- Payback
+
+**Important**
+- This is a synthetic estimator for demo purposes, not a formal financial forecast.
+- The quantified value estimator is shown for explainability and prioritization. It is not directly fed back into treatment scoring.
 """)
