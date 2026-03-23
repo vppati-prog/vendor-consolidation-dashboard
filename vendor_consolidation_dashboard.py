@@ -654,6 +654,59 @@ def explain_readiness(vendor, readiness_breakdown_df, readiness_summary_df):
 
     return f"Readiness score is {vendor_summary['readiness_score']:.1f}, resulting in {vendor_summary['tranche']}. " + " ".join(reasons)
 
+def compare_vendors(vendor_a, vendor_b, final_df):
+    row_a = final_df[final_df["vendor"] == vendor_a].iloc[0]
+    row_b = final_df[final_df["vendor"] == vendor_b].iloc[0]
+
+    return (
+        f"{vendor_a} is recommended for {row_a['recommended_treatment']} "
+        f"(readiness {row_a['readiness_score']:.1f}, {row_a['tranche']}, net value {row_a['net_value_m']:.2f}M), "
+        f"while {vendor_b} is recommended for {row_b['recommended_treatment']} "
+        f"(readiness {row_b['readiness_score']:.1f}, {row_b['tranche']}, net value {row_b['net_value_m']:.2f}M). "
+        f"The treatment score gap is {row_a['top_score']:.1f} vs {row_b['top_score']:.1f}."
+    )
+def explain_why_not(vendor, rejected_option, weighted_df, final_df):
+    vendor_scores = final_df[final_df["vendor"] == vendor].iloc[0]
+    recommended = vendor_scores["recommended_treatment"]
+
+    if rejected_option not in ["Transition", "Novate", "Managed", "Retain"]:
+        return f"{rejected_option} is not a recognized treatment option."
+
+    if rejected_option == recommended:
+        return f"{vendor} is actually recommended for {rejected_option}, so this is the preferred option."
+
+    recommended_score = float(vendor_scores[recommended])
+    rejected_score = float(vendor_scores[rejected_option])
+
+    rec_details = weighted_df[
+        (weighted_df["vendor"] == vendor) & (weighted_df["option"] == recommended)
+    ][["dimension", "actual_score", "preferred_range", "weighted_points"]].sort_values("weighted_points", ascending=False)
+
+    rej_details = weighted_df[
+        (weighted_df["vendor"] == vendor) & (weighted_df["option"] == rejected_option)
+    ][["dimension", "actual_score", "preferred_range", "weighted_points"]].sort_values("weighted_points", ascending=False)
+
+    rec_top = rec_details.head(2)
+    rej_low = rej_details.sort_values("weighted_points", ascending=True).head(2)
+
+    rec_reasons = []
+    for _, r in rec_top.iterrows():
+        rec_reasons.append(
+            f"{r['dimension']} matched well for {recommended} (actual {int(r['actual_score'])}, preferred {r['preferred_range']})"
+        )
+
+    rej_reasons = []
+    for _, r in rej_low.iterrows():
+        rej_reasons.append(
+            f"{r['dimension']} was weaker for {rejected_option} (actual {int(r['actual_score'])}, preferred {r['preferred_range']})"
+        )
+
+    return (
+        f"{vendor} was not recommended for {rejected_option} because {recommended} scored higher "
+        f"({recommended_score:.1f} vs {rejected_score:.1f}). "
+        f"Key strengths for {recommended}: " + "; ".join(rec_reasons) + ". "
+        f"Key reasons against {rejected_option}: " + "; ".join(rej_reasons) + "."
+    )
 # =========================================================
 # 8. SIDEBAR CONTROLS
 # =========================================================
@@ -771,7 +824,31 @@ def find_vendor_in_prompt(prompt, vendors):
             return v
     return None
 
-def handle_prompt(prompt, final_df, actual_df):
+def find_two_vendors_in_prompt(prompt, vendors):
+    p = prompt.lower().strip()
+
+    matches = re.findall(r"\bvendor\s*(\d+)\b", p)
+    resolved = []
+    for m in matches:
+        guess = f"V{m}"
+        if guess in vendors and guess not in resolved:
+            resolved.append(guess)
+
+    if len(resolved) >= 2:
+        return resolved[0], resolved[1]
+
+    matches_v = re.findall(r"\bv\s*(\d+)\b", p)
+    for m in matches_v:
+        guess = f"V{m}"
+        if guess in vendors and guess not in resolved:
+            resolved.append(guess)
+
+    if len(resolved) >= 2:
+        return resolved[0], resolved[1]
+
+    return None, None
+
+def handle_prompt(prompt, final_df, actual_df, weighted_df):
     p = prompt.strip().lower()
     vendors = final_df["vendor"].tolist()
 
@@ -801,6 +878,27 @@ def handle_prompt(prompt, final_df, actual_df):
 
     # Vendor-specific questions
     vendor = find_vendor_in_prompt(prompt, vendors)
+    vendor_a, vendor_b = find_two_vendors_in_prompt(prompt, vendors)
+    # Compare two vendors
+    if ("compare" in p or "comparison" in p) and vendor_a and vendor_b:
+        return {
+            "message": compare_vendors(vendor_a, vendor_b, final_df),
+            "payload": None
+        }
+
+    # Why NOT a treatment option
+    if "why not" in p and vendor:
+        rejected_option = None
+        for option in ["Transition", "Novate", "Managed", "Retain"]:
+            if option.lower() in p:
+                rejected_option = option
+                break
+
+        if rejected_option:
+            return {
+                "message": explain_why_not(vendor, rejected_option, weighted_df, final_df),
+                "payload": None
+            }
 
     if vendor and ("ideal candidate" in p or "candidate for what" in p or "best suited" in p):
         row = final_df[final_df["vendor"] == vendor].iloc[0]
@@ -899,7 +997,7 @@ with tab1:
         submitted = st.form_submit_button("Run Prompt")
 
     if submitted and prompt_text.strip():
-       result = handle_prompt(prompt_text, final_df, actual_df)
+       result = handle_prompt(prompt_text, final_df, actual_df, weighted_df)
 
        if isinstance(result, dict):
            st.session_state.copilot_message = result.get("message", "")
