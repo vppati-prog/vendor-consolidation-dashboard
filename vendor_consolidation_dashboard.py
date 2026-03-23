@@ -1,3 +1,5 @@
+import re
+import random
 import pandas as pd
 import streamlit as st
 
@@ -20,7 +22,7 @@ BASE_VENDOR_METADATA = pd.DataFrame([
     {"vendor": "V10", "replaceability": 3, "execution_difficulty": 3, "value_potential": 3, "operational_readiness": 3, "governance_fit": 3, "vendor_health": 3, "annual_spend_m": 5.0, "business_criticality": 3},
 ])
 
-CONTRACT_SCORE_TARGETS = {
+BASE_CONTRACT_TARGETS = {
     "V1":  {"contract_flexibility": 4, "lock_in": 1},
     "V2":  {"contract_flexibility": 5, "lock_in": 2},
     "V3":  {"contract_flexibility": 5, "lock_in": 3},
@@ -162,13 +164,8 @@ def extract_contract_signals(contract_text: str) -> dict:
         ),
     }
 
-BASE_CONTRACTS = {
-    vendor: generate_contract_text(vendor, scores["contract_flexibility"], scores["lock_in"])
-    for vendor, scores in CONTRACT_SCORE_TARGETS.items()
-}
-
 # =========================================================
-# 3. MODEL LOGIC
+# 3. SCORING / MODEL LOGIC
 # =========================================================
 
 TREATMENT_DIMENSIONS = [
@@ -362,7 +359,7 @@ def build_readiness_breakdown(actual_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 # =========================================================
-# 4. VALUE SIMULATION LOGIC
+# 4. VALUE SIMULATION
 # =========================================================
 
 def clamp(value, low, high):
@@ -520,7 +517,113 @@ def build_value_summary(actual_df, final_df):
     return pd.DataFrame(rows), logic_map
 
 # =========================================================
-# 5. EXPLANATIONS
+# 5. SYNTHETIC VENDOR CREATION (OPTION C)
+# =========================================================
+
+def next_vendor_number(existing_names):
+    nums = []
+    for v in existing_names:
+        m = re.match(r"V(\d+)", str(v))
+        if m:
+            nums.append(int(m.group(1)))
+    return max(nums) + 1 if nums else 1
+
+def synthetic_vendor_from_prompt(prompt, vendor_name):
+    text = prompt.lower()
+
+    def level_from_words(default=3):
+        if "very high" in text:
+            return 5
+        if "high" in text:
+            return 4
+        if "low" in text:
+            return 2
+        if "very low" in text:
+            return 1
+        return default
+
+    replaceability = 3
+    if "low replaceability" in text:
+        replaceability = 2
+    elif "high replaceability" in text:
+        replaceability = 4
+
+    lock_in = 3
+    if "high lock-in" in text or "high lockin" in text:
+        lock_in = 4
+    elif "low lock-in" in text or "low lockin" in text:
+        lock_in = 2
+
+    execution_difficulty = 3
+    if "high difficulty" in text or "complex" in text:
+        execution_difficulty = 4
+    elif "low difficulty" in text or "simple" in text:
+        execution_difficulty = 2
+
+    contract_flexibility = 3
+    if "high flexibility" in text or "flexible contract" in text:
+        contract_flexibility = 4
+    elif "rigid contract" in text or "low flexibility" in text:
+        contract_flexibility = 2
+
+    value_potential = 3
+    if "high value" in text or "high savings" in text:
+        value_potential = 4
+    elif "low value" in text:
+        value_potential = 2
+
+    governance_fit = 3
+    if "strong governance" in text:
+        governance_fit = 4
+
+    business_criticality = 3
+    if "critical" in text:
+        business_criticality = 5
+    elif "non critical" in text or "non-critical" in text:
+        business_criticality = 2
+
+    operational_readiness = 3
+    vendor_health = 3
+    annual_spend_m = round(random.choice([3.0, 4.5, 6.0, 7.5, 9.0, 11.0]), 1)
+
+    metadata = {
+        "vendor": vendor_name,
+        "replaceability": replaceability,
+        "execution_difficulty": execution_difficulty,
+        "value_potential": value_potential,
+        "operational_readiness": operational_readiness,
+        "governance_fit": governance_fit,
+        "vendor_health": vendor_health,
+        "annual_spend_m": annual_spend_m,
+        "business_criticality": business_criticality,
+    }
+
+    contract = generate_contract_text(vendor_name, contract_flexibility, lock_in)
+    targets = {"contract_flexibility": contract_flexibility, "lock_in": lock_in}
+
+    return metadata, contract, targets
+
+# =========================================================
+# 6. SESSION STATE INIT
+# =========================================================
+
+if "metadata_df" not in st.session_state:
+    st.session_state.metadata_df = BASE_VENDOR_METADATA.copy()
+
+if "contracts_dict" not in st.session_state:
+    st.session_state.contracts_dict = {
+        vendor: generate_contract_text(vendor, scores["contract_flexibility"], scores["lock_in"])
+        for vendor, scores in BASE_CONTRACT_TARGETS.items()
+    }
+
+if "contract_targets" not in st.session_state:
+    st.session_state.contract_targets = BASE_CONTRACT_TARGETS.copy()
+
+if "copilot_message" not in st.session_state:
+    st.session_state.copilot_message = ""
+
+# =========================================================
+# 7. EXPLANATIONS
 # =========================================================
 
 def explain_vendor(vendor, weighted_df, final_df):
@@ -549,7 +652,7 @@ def explain_readiness(vendor, readiness_breakdown_df, readiness_summary_df):
     return f"Readiness score is {vendor_summary['readiness_score']:.1f}, resulting in {vendor_summary['tranche']}. " + " ".join(reasons)
 
 # =========================================================
-# 6. SIDEBAR CONTROLS
+# 8. SIDEBAR CONTROLS
 # =========================================================
 
 st.sidebar.title("Control Panel")
@@ -575,10 +678,10 @@ treatment_weights = normalize_weights({
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Live Simulator")
 
-selected_vendor = st.sidebar.selectbox("Pick vendor to simulate", BASE_VENDOR_METADATA["vendor"].tolist(), index=0)
+selected_vendor = st.sidebar.selectbox("Pick vendor to simulate", st.session_state.metadata_df["vendor"].tolist(), index=0)
 
-selected_row = BASE_VENDOR_METADATA[BASE_VENDOR_METADATA["vendor"] == selected_vendor].iloc[0]
-selected_contract_targets = CONTRACT_SCORE_TARGETS[selected_vendor]
+selected_row = st.session_state.metadata_df[st.session_state.metadata_df["vendor"] == selected_vendor].iloc[0]
+selected_contract_targets = st.session_state.contract_targets[selected_vendor]
 
 sim_replaceability = st.sidebar.slider("Replaceability (sim)", 1, 5, int(selected_row["replaceability"]))
 sim_execution_difficulty = st.sidebar.slider("Execution Difficulty (sim)", 1, 5, int(selected_row["execution_difficulty"]))
@@ -588,16 +691,15 @@ sim_governance = st.sidebar.slider("Governance Fit (sim)", 1, 5, int(selected_ro
 sim_health = st.sidebar.slider("Vendor Health (sim)", 1, 5, int(selected_row["vendor_health"]))
 sim_spend = st.sidebar.slider("Annual Spend in $M (sim)", 1.0, 20.0, float(selected_row["annual_spend_m"]), 0.5)
 sim_criticality = st.sidebar.slider("Business Criticality (sim)", 1, 5, int(selected_row["business_criticality"]))
-
 sim_contract_flex = st.sidebar.slider("Contract Flexibility (via contract)", 1, 5, int(selected_contract_targets["contract_flexibility"]))
 sim_lock_in = st.sidebar.slider("Lock-in (via contract)", 1, 5, int(selected_contract_targets["lock_in"]))
 
 # =========================================================
-# 7. APPLY SIMULATION
+# 9. APPLY SIMULATION TO WORKING COPY
 # =========================================================
 
-working_metadata = BASE_VENDOR_METADATA.copy()
-working_contracts = BASE_CONTRACTS.copy()
+working_metadata = st.session_state.metadata_df.copy()
+working_contracts = dict(st.session_state.contracts_dict)
 
 working_metadata.loc[working_metadata["vendor"] == selected_vendor, "replaceability"] = sim_replaceability
 working_metadata.loc[working_metadata["vendor"] == selected_vendor, "execution_difficulty"] = sim_execution_difficulty
@@ -611,7 +713,7 @@ working_metadata.loc[working_metadata["vendor"] == selected_vendor, "business_cr
 working_contracts[selected_vendor] = generate_contract_text(selected_vendor, sim_contract_flex, sim_lock_in)
 
 # =========================================================
-# 8. CALCULATE OUTPUTS
+# 10. CALCULATE OUTPUTS
 # =========================================================
 
 actual_df = build_actual_scores(working_metadata, working_contracts)
@@ -639,11 +741,122 @@ final_df["explanation"] = final_df["vendor"].apply(lambda v: explain_vendor(v, w
 final_df["readiness_explanation"] = final_df["vendor"].apply(lambda v: explain_readiness(v, readiness_breakdown_df, readiness_summary_df))
 
 # =========================================================
-# 9. UI
+# 11. COPILOT / PROMPT HANDLER
+# =========================================================
+
+def find_vendor_in_prompt(prompt, vendors):
+    p = prompt.lower()
+    for v in vendors:
+        if str(v).lower() in p:
+            return v
+        alt = str(v).replace("V", "Vendor ")
+        if alt.lower() in p:
+            return v
+    m = re.search(r"vendor\s*(\d+)", p)
+    if m:
+        guess = f"V{m.group(1)}"
+        if guess in vendors:
+            return guess
+    return None
+
+def handle_prompt(prompt, final_df, actual_df):
+    p = prompt.strip().lower()
+    vendors = final_df["vendor"].tolist()
+
+    # Add vendor
+    if "add vendor" in p or "upload vendor" in p:
+        m = re.search(r"vendor\s*(\d+)", p)
+        if m:
+            vendor_name = f"V{m.group(1)}"
+        else:
+            vendor_name = f"V{next_vendor_number(vendors)}"
+
+        if vendor_name in vendors:
+            return f"{vendor_name} already exists in the portfolio."
+
+        metadata, contract, targets = synthetic_vendor_from_prompt(prompt, vendor_name)
+        st.session_state.metadata_df = pd.concat(
+            [st.session_state.metadata_df, pd.DataFrame([metadata])],
+            ignore_index=True
+        )
+        st.session_state.contracts_dict[vendor_name] = contract
+        st.session_state.contract_targets[vendor_name] = targets
+
+        return (
+            f"{vendor_name} has been added using synthetic demo data. "
+            f"Default assumptions were created for contract and metadata, and the dashboard will now refresh with the new vendor included."
+        )
+
+    # Vendor-specific questions
+    vendor = find_vendor_in_prompt(prompt, vendors)
+
+    if vendor and ("ideal candidate" in p or "candidate for what" in p or "best suited" in p):
+        row = final_df[final_df["vendor"] == vendor].iloc[0]
+        return (
+            f"{vendor} is best suited for **{row['recommended_treatment']}**. "
+            f"Reason: {row['explanation']} "
+            f"Readiness score is {row['readiness_score']:.1f} in {row['tranche']}. "
+            f"Estimated net value is {row['net_value_m']:.2f}M."
+        )
+
+    if vendor and ("why" in p or "explain" in p):
+        row = final_df[final_df["vendor"] == vendor].iloc[0]
+        return (
+            f"For {vendor}, the recommended treatment is **{row['recommended_treatment']}**. "
+            f"Why: {row['explanation']} "
+            f"Readiness: {row['readiness_explanation']} "
+            f"Estimated value: net {row['net_value_m']:.2f}M from gross {row['gross_value_m']:.2f}M and one-time cost {row['one_time_cost_m']:.2f}M."
+        )
+
+    if "top 3 vendors by net value" in p or "top vendors by net value" in p:
+        top_df = final_df[["vendor", "recommended_treatment", "net_value_m"]].sort_values("net_value_m", ascending=False).head(3)
+        lines = []
+        for _, r in top_df.iterrows():
+            lines.append(f"{r['vendor']} ({r['recommended_treatment']}) - {r['net_value_m']:.2f}M")
+        return "Top vendors by net value: " + "; ".join(lines)
+
+    if "tranche 1" in p and "which vendors" in p:
+        df = final_df[final_df["tranche"] == "Tranche 1"][["vendor", "recommended_treatment", "net_value_m"]]
+        if df.empty:
+            return "There are no vendors currently in Tranche 1."
+        lines = []
+        for _, r in df.iterrows():
+            lines.append(f"{r['vendor']} ({r['recommended_treatment']}, net value {r['net_value_m']:.2f}M)")
+        return "Current Tranche 1 vendors: " + "; ".join(lines)
+
+    if "total net value" in p or "portfolio net value" in p:
+        total_net = final_df["net_value_m"].sum()
+        total_gross = final_df["gross_value_m"].sum()
+        total_cost = final_df["one_time_cost_m"].sum()
+        return (
+            f"The current portfolio value estimate is: gross {total_gross:.2f}M, "
+            f"one-time cost {total_cost:.2f}M, and net value {total_net:.2f}M."
+        )
+
+    if vendor and ("show" in p or "details" in p):
+        row = final_df[final_df["vendor"] == vendor].iloc[0]
+        return (
+            f"{vendor}: treatment {row['recommended_treatment']}, readiness {row['readiness_score']:.1f}, "
+            f"{row['tranche']}, gross value {row['gross_value_m']:.2f}M, one-time cost {row['one_time_cost_m']:.2f}M, "
+            f"net value {row['net_value_m']:.2f}M."
+        )
+
+    return (
+        "I can help with questions like: "
+        "'Vendor 5 is ideal candidate for what?', "
+        "'Why is Vendor 4 managed?', "
+        "'Show top 3 vendors by net value', "
+        "'Which vendors are in Tranche 1?', "
+        "'What is total net value?', "
+        "or 'Add Vendor 11'."
+    )
+
+# =========================================================
+# 12. UI
 # =========================================================
 
 st.title("Vendor Consolidation Dashboard")
-st.caption("Demo for 10 vendors: contract parsing + metadata scoring + treatment recommendation + readiness tranche + value simulation")
+st.caption("Demo for vendor consolidation: contract parsing + metadata scoring + treatment recommendation + readiness + value simulation + co-pilot")
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "1. Vendor Intelligence Hub",
@@ -657,6 +870,32 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 
 with tab1:
     st.subheader("Vendor Intelligence Hub")
+
+    st.markdown("### Ask the Vendor Co-Pilot")
+    sample_prompts = (
+        "Try: 'Vendor 5 is ideal candidate for what?' | "
+        "'Why is Vendor 4 managed?' | "
+        "'Show top 3 vendors by net value' | "
+        "'What is total net value?' | "
+        "'Add Vendor 11' | "
+        "'Add Vendor 12 with high lock-in and low replaceability'"
+    )
+    st.caption(sample_prompts)
+
+    with st.form("copilot_form"):
+        prompt_text = st.text_input("Ask anything related to the dashboard")
+        submitted = st.form_submit_button("Run Prompt")
+
+    if submitted and prompt_text.strip():
+        msg = handle_prompt(prompt_text, final_df, actual_df)
+        st.session_state.copilot_message = msg
+        st.rerun()
+
+    if st.session_state.copilot_message:
+        st.success(st.session_state.copilot_message)
+
+    st.markdown("---")
+
     vendor_pick = st.selectbox("Select vendor", actual_df["vendor"].tolist(), key="vih_vendor")
     contract_text = working_contracts[vendor_pick]
     contract_signals = extract_contract_signals(contract_text)
@@ -816,56 +1055,6 @@ with tab5:
     with c6:
         st.metric("Tranche 1 + 2 Net Value ($M)", tranche_12_net)
 
-    st.info(
-        "Interpretation: Tranche 1 and Tranche 2 vendors represent the more execution-ready portfolio. "
-        "This gives an approximate view of what the top 50–60% of actionable vendors could unlock earlier in the program."
-    )
-
-    colp1, colp2 = st.columns([1, 1])
-
-    with colp1:
-        st.markdown("#### Treatment-Wise Value Split")
-        treatment_value_split = final_df.groupby("recommended_treatment", as_index=False)[["gross_value_m", "one_time_cost_m", "net_value_m"]].sum()
-        st.dataframe(treatment_value_split, use_container_width=True, hide_index=True)
-        st.bar_chart(treatment_value_split.set_index("recommended_treatment")[["net_value_m"]])
-
-    with colp2:
-        st.markdown("#### Tranche-Wise Value Split")
-        tranche_value_split = final_df.groupby("tranche", as_index=False)[["gross_value_m", "one_time_cost_m", "net_value_m"]].sum()
-        st.dataframe(tranche_value_split, use_container_width=True, hide_index=True)
-        st.bar_chart(tranche_value_split.set_index("tranche")[["net_value_m"]])
-
-    st.markdown("#### Top Vendors by Net Value")
-    top_value_vendors = final_df[[
-        "vendor", "recommended_treatment", "tranche", "gross_value_m", "one_time_cost_m", "net_value_m"
-    ]].sort_values("net_value_m", ascending=False)
-    st.dataframe(top_value_vendors, use_container_width=True, hide_index=True)
-
-    st.markdown("#### Portfolio-Level Inferences")
-    inference_rows = [
-        {
-            "inference": "Portfolio Gross Value",
-            "commentary": "This is the total potential annualized value or avoided loss across all 10 vendors based on the current recommended treatment mix."
-        },
-        {
-            "inference": "Portfolio One-Time Cost",
-            "commentary": "This reflects the estimated implementation or setup cost needed to realize the treatment-led value."
-        },
-        {
-            "inference": "Portfolio Net Value",
-            "commentary": "This is the estimated value remaining after one-time costs."
-        },
-        {
-            "inference": "Tranche 1 + 2 Value",
-            "commentary": "This isolates the more execution-ready vendors and shows the earlier value pool that may be captured first."
-        },
-        {
-            "inference": "Treatment-Wise Split",
-            "commentary": "This helps explain which treatment type is contributing the most value in the current portfolio."
-        },
-    ]
-    st.dataframe(pd.DataFrame(inference_rows), use_container_width=True, hide_index=True)
-
 with tab6:
     st.subheader("Decision Cockpit")
 
@@ -902,26 +1091,6 @@ with tab6:
             {"metric": "Total One-Time Cost", "value": total_cost},
             {"metric": "Total Net Value", "value": total_net},
         ]), use_container_width=True, hide_index=True)
-
-    st.markdown("#### Treatment Explanation")
-    vendor_pick_explain = st.selectbox("Select vendor for decision explanation", final_df["vendor"].tolist(), key="explain_vendor")
-    explain_row = final_df[final_df["vendor"] == vendor_pick_explain].iloc[0]
-
-    st.write(f"**Recommended treatment:** {explain_row['recommended_treatment']}")
-    st.write(f"**Treatment score:** {explain_row['top_score']:.2f}")
-    st.write(f"**Why treatment:** {explain_row['explanation']}")
-
-    st.markdown("#### Readiness Explanation")
-    st.write(f"**Readiness score:** {explain_row['readiness_score']:.2f}")
-    st.write(f"**Tranche:** {explain_row['tranche']}")
-    st.write(f"**Why readiness:** {explain_row['readiness_explanation']}")
-
-    st.markdown("#### Value Explanation")
-    st.write(
-        f"**Estimated value:** {explain_row['net_value_m']:.2f}M net "
-        f"from {explain_row['gross_value_m']:.2f}M gross value and {explain_row['one_time_cost_m']:.2f}M one-time cost."
-    )
-    st.caption("Note: the treatment decision still uses qualitative Value Potential as a treatment dimension. The quantified value shown here is a separate estimator for explainability and prioritization, not a circular input into the decision engine.")
 
 with tab7:
     st.subheader("Live Simulator")
@@ -973,59 +1142,22 @@ with tab7:
 
     st.dataframe(sim_portfolio_df, use_container_width=True, hide_index=True)
 
-    total_sim_gross = round(sim_portfolio_df["gross_value_m"].sum(), 2)
-    total_sim_cost = round(sim_portfolio_df["one_time_cost_m"].sum(), 2)
-    total_sim_net = round(sim_portfolio_df["net_value_m"].sum(), 2)
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Simulated Portfolio Gross Value ($M)", total_sim_gross)
-    with c2:
-        st.metric("Simulated Portfolio One-Time Cost ($M)", total_sim_cost)
-    with c3:
-        st.metric("Simulated Portfolio Net Value ($M)", total_sim_net)
-
-    st.success(
-        f"You are simulating vendor {selected_vendor}. Every sidebar change recalculates the contract, actual scores, "
-        f"fit scores, weighted treatment scores, readiness score, tranche, and estimated value across the entire portfolio."
-    )
-
 with st.expander("Model Notes"):
     st.markdown("""
-**How this demo works**
-1. Mock contracts are generated for each vendor.
-2. The contract parser derives:
-   - contract_flexibility
-   - lock_in
-3. Remaining dimensions come from synthetic metadata.
-4. Treatment is based on:
-   - fit score vs preferred range
-   - weighted treatment points
-5. Readiness is based on:
-   - operational_readiness
-   - governance_fit
-   - vendor_health
-   - execution_readiness = 6 - execution_difficulty
-6. Value is treatment-specific:
-   - Transition -> hard savings
-   - Novate -> commercial/governance savings
-   - Managed -> coordination/governance savings
-   - Retain -> avoided loss
+**Co-Pilot capabilities**
+- Ask vendor-specific questions
+- Ask portfolio questions
+- Add synthetic vendors using natural language prompts
 
-**Treatment formula**
-- weighted points = weight x fit / 5
-
-**Readiness formula**
-- contribution = weight x score / 5
-- readiness score = sum of readiness contributions
-
-**Value outputs**
-- Gross value
-- One-time cost
-- Net value
-- Payback
+**Examples**
+- Vendor 5 is ideal candidate for what?
+- Why is Vendor 4 managed?
+- Show top 3 vendors by net value
+- What is total net value?
+- Add Vendor 11
+- Add Vendor 12 with high lock-in and low replaceability
 
 **Important**
-- This is a synthetic estimator for demo purposes, not a formal financial forecast.
-- The quantified value estimator is shown for explainability and prioritization. It is not directly fed back into treatment scoring.
+- Prompt behavior is LLM-style UX implemented with local intent parsing for demo purposes.
+- Added vendors are synthetic demo entities and are clearly treated as synthetic assumptions.
 """)
