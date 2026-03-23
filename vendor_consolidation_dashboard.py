@@ -891,8 +891,14 @@ with tab1:
 
     if submitted and prompt_text.strip():
        result = handle_prompt(prompt_text, final_df, actual_df)
-       st.session_state.copilot_message = result["message"]
-       st.session_state.copilot_payload = result["payload"]
+
+       if isinstance(result, dict):
+           st.session_state.copilot_message = result.get("message", "")
+           st.session_state.copilot_payload = result.get("payload", None)
+       else:
+           st.session_state.copilot_message = str(result)
+           st.session_state.copilot_payload = None
+
        st.rerun()
 
     if st.session_state.copilot_message:
