@@ -622,6 +622,9 @@ if "contract_targets" not in st.session_state:
 if "copilot_message" not in st.session_state:
     st.session_state.copilot_message = ""
 
+if "copilot_payload" not in st.session_state:
+    st.session_state.copilot_payload = None
+
 # =========================================================
 # 7. EXPLANATIONS
 # =========================================================
@@ -887,12 +890,41 @@ with tab1:
         submitted = st.form_submit_button("Run Prompt")
 
     if submitted and prompt_text.strip():
-        msg = handle_prompt(prompt_text, final_df, actual_df)
-        st.session_state.copilot_message = msg
-        st.rerun()
+       result = handle_prompt(prompt_text, final_df, actual_df)
+       st.session_state.copilot_message = result["message"]
+       st.session_state.copilot_payload = result["payload"]
+       st.rerun()
 
     if st.session_state.copilot_message:
         st.success(st.session_state.copilot_message)
+
+    if st.session_state.copilot_payload and st.session_state.copilot_payload.get("type") == "add_vendor":
+    payload = st.session_state.copilot_payload
+
+    st.markdown("#### Generated Synthetic Vendor Preview")
+    c1, c2 = st.columns([1, 1])
+
+    with c1:
+        st.markdown(f"**Metadata for {payload['vendor']}**")
+        metadata_df = pd.DataFrame(
+            [{"field": k, "value": v} for k, v in payload["metadata"].items()]
+        )
+        st.dataframe(metadata_df, use_container_width=True, hide_index=True)
+
+        st.markdown("**Contract-Derived Targets**")
+        targets_df = pd.DataFrame(
+            [{"field": k, "value": v} for k, v in payload["targets"].items()]
+        )
+        st.dataframe(targets_df, use_container_width=True, hide_index=True)
+
+    with c2:
+        st.markdown(f"**Synthetic Contract for {payload['vendor']}**")
+        st.text_area(
+            "Generated Contract",
+            value=payload["contract"],
+            height=320,
+            key=f"generated_contract_{payload['vendor']}"
+        )
 
     st.markdown("---")
 
