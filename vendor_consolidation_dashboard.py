@@ -899,12 +899,12 @@ with tab1:
         st.success(st.session_state.copilot_message)
 
     if st.session_state.copilot_payload and st.session_state.copilot_payload.get("type") == "add_vendor":
-    payload = st.session_state.copilot_payload
+       payload = st.session_state.copilot_payload
 
-    st.markdown("#### Generated Synthetic Vendor Preview")
-    c1, c2 = st.columns([1, 1])
+       st.markdown("#### Generated Synthetic Vendor Preview")
+       c1, c2 = st.columns([1, 1])
 
-    with c1:
+       with c1:
         st.markdown(f"**Metadata for {payload['vendor']}**")
         metadata_df = pd.DataFrame(
             [{"field": k, "value": v} for k, v in payload["metadata"].items()]
@@ -917,7 +917,7 @@ with tab1:
         )
         st.dataframe(targets_df, use_container_width=True, hide_index=True)
 
-    with c2:
+       with c2:
         st.markdown(f"**Synthetic Contract for {payload['vendor']}**")
         st.text_area(
             "Generated Contract",
