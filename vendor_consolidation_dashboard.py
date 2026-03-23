@@ -952,7 +952,7 @@ with tab1:
 
     with col2:
         st.markdown("#### Mock Contract Text")
-        st.text_area("Contract", value=contract_text, height=380, key="contract_text_view")
+        st.text_area("Contract", value=contract_text, height=380, key=f"contract_text_view_{vendor_pick}")
 
 with tab2:
     st.subheader("Step 2: Actual Score vs Preferred Range -> Fit Score")
@@ -1133,8 +1133,15 @@ with tab6:
 with tab7:
     st.subheader("Live Simulator")
 
-    sim_row = final_df[final_df["vendor"] == selected_vendor].iloc[0]
-    sim_actual = actual_df[actual_df["vendor"] == selected_vendor].iloc[0]
+    sim_vendor_pick = st.selectbox(
+        "Select vendor for simulator result",
+        final_df["vendor"].tolist(),
+        index=0,
+        key="sim_vendor_pick"
+    )
+
+    sim_row = final_df[final_df["vendor"] == sim_vendor_pick].iloc[0]
+    sim_actual = actual_df[actual_df["vendor"] == sim_vendor_pick].iloc[0]
 
     col1, col2 = st.columns(2)
 
@@ -1179,6 +1186,10 @@ with tab7:
     ]].copy().sort_values(["tranche", "net_value_m"], ascending=[True, False])
 
     st.dataframe(sim_portfolio_df, use_container_width=True, hide_index=True)
+    st.success(
+        f"You are viewing simulator results for vendor {sim_vendor_pick}. "
+        f"Any sidebar changes dynamically recalculate treatment, readiness, and value across the portfolio."
+    )
 
 with st.expander("Model Notes"):
     st.markdown("""
