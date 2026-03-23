@@ -748,18 +748,27 @@ final_df["readiness_explanation"] = final_df["vendor"].apply(lambda v: explain_r
 # =========================================================
 
 def find_vendor_in_prompt(prompt, vendors):
-    p = prompt.lower()
-    for v in vendors:
-        if str(v).lower() in p:
-            return v
-        alt = str(v).replace("V", "Vendor ")
-        if alt.lower() in p:
-            return v
-    m = re.search(r"vendor\s*(\d+)", p)
+    p = prompt.lower().strip()
+
+    # First, look for exact "vendor <number>" pattern
+    m = re.search(r"\bvendor\s*(\d+)\b", p)
     if m:
         guess = f"V{m.group(1)}"
         if guess in vendors:
             return guess
+
+    # Then, look for exact "v<number>" pattern
+    m2 = re.search(r"\bv\s*(\d+)\b", p)
+    if m2:
+        guess = f"V{m2.group(1)}"
+        if guess in vendors:
+            return guess
+
+    # Fallback: exact whole-word match only
+    for v in sorted(vendors, key=lambda x: len(str(x)), reverse=True):
+        v_lower = str(v).lower()
+        if re.search(rf"\b{re.escape(v_lower)}\b", p):
+            return v
     return None
 
 def handle_prompt(prompt, final_df, actual_df):
